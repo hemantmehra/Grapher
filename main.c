@@ -17,6 +17,28 @@ double translate_y(double y, double scale)
     return (double) screen_height / 2 - y * scale;
 }
 
+double func1(double x)
+{
+    return  x * cos(x) * sin(x);
+}
+
+void plot_points(Vector2 *points, double step, double scale)
+{
+    int i = 0;
+    double x = - step * SAMPLE_SIZE/2;
+    double y;
+    while (i < SAMPLE_SIZE) {
+        // printf("%f\n", x);
+        y = func1(x);
+        int yt = translate_y(y, scale);
+        int xt = translate_x(x, scale);
+        Vector2 p = {xt, yt};
+        points[i] = p;
+        x += step;
+        i++;
+    }
+}
+
 int main(void)
 {
     InitWindow(screen_width, screen_height, "Grapher");
@@ -24,20 +46,7 @@ int main(void)
     double step = 0.01;
     Vector2 points[SAMPLE_SIZE];
 
-    int i = 0;
-    double x = - step * SAMPLE_SIZE/2;
-    double y;
-    while (i < SAMPLE_SIZE) {
-        // printf("%f\n", x);
-        y = x * cos(x) * sin(x);
-        int yt = translate_y(y, 50);
-        int xt = translate_x(x, 50);
-        Vector2 p = {xt, yt};
-        points[i] = p;
-        x += step;
-        i++;
-    }
-
+    plot_points(points, step, scale);
     // for (int i = 0; i < SAMPLE_SIZE; i++) {
     //     printf("%f %f\n", points[i].x, points[i].y);
     // }
