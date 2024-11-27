@@ -1,19 +1,42 @@
 #include <math.h>
 #include <stdio.h>
 #include <assert.h>
+#include <string.h>
 #include <raylib.h>
 
 int screen_width = 1600;
 int screen_height = 900;
 
 #define SAMPLE_SIZE 4000
+#define TOKENS_COUNT 1000
+
+typedef enum {
+    T_Open,
+    T_Close,
+    T_Operator,
+    T_Symbol,
+    T_Number
+} TokenKind;
 
 typedef enum {
     PLUS,
     MUL,
     SIN,
-    COS
+    COS,
+    INVALID
 } Operator;
+
+struct _token {
+    TokenKind kind;
+
+    union {
+        Operator operator;
+        char symbol;
+        double number;
+    } main;
+};
+
+typedef struct _token Token;
 
 typedef enum {
     Binary,
@@ -104,6 +127,114 @@ double eval_ast(Ast *ast, double x)
     }
 }
 
+struct _string {
+    char *str;
+    int length;
+};
+
+typedef struct _string String;
+
+void str_add_char(String *str, char ch)
+{
+    int l = str->length;
+    str->str[l] = ch;
+}
+
+bool str_eq(String str1, char *str2)
+{
+    int l1 = str1.length;
+    int l2 = strlen(str2);
+
+    if (l1 != l2) return false;
+
+    int i = 0;
+    int j = 0;
+    while(i < l1) {
+        if (str1.str[i++] != str2[j++]) return false;
+    }
+    return true;
+}
+
+Operator get_operator(String str)
+{
+    if (str_eq(str, "*")) return MUL;
+    if (str_eq(str, "+")) return PLUS;
+    if (str_eq(str, "sin")) return SIN;
+    if (str_eq(str, "cos")) return COS;
+    return INVALID;
+}
+
+bool is_number(String str)
+{
+    int i = 0;
+    while (i < str.length) {
+        if (!(str.str[i++] > '0' && str.str[i++] < '9')) return false;
+    }
+    return true;
+}
+
+Token get_token(String word)
+{
+    Token t;
+    t.kind = T_Number;
+    if(is_number(word)) {
+        t.main.number = 0;
+    }
+    else {
+        Operator op = get_operator(word);
+        if (op == INVALID)
+            t.main.symbol = word.str[0];
+        else
+            t.main.operator = op;
+    }
+    return t;
+}
+
+int tokenize(Token *tokens, String function)
+{
+    bool in_word = false;
+    char buffer[100];
+    String word = {buffer, 0};
+    int i = 0;
+    int j = 0;
+    while(i < function.length) {
+        printf("[-] %c\n", function.str[i]);
+
+        if (function.str[i] == '(') {
+            tokens[j++] = CLITERAL(Token) {.kind = T_Open, .main = 0};
+        }
+        else if (function.str[i] == ')') {
+            if (word.length != 0) {
+                Token t = get_token(word);
+                word.length = 0;
+                tokens[j++] = t;
+            }
+            tokens[j++] = CLITERAL(Token) {.kind = T_Close, .main = 0};
+            in_word = false;
+        }
+        else {
+            if (in_word && function.str[i] != ' ') {
+                str_add_char(&word, function.str[i]);
+            }
+            else if (in_word && function.str[i] == ' ') {
+                if (word.length != 0) {
+                    Token t = get_token(word);
+                    word.length = 0;
+                    tokens[j++] = t;
+                    in_word = false;
+                }
+            }
+            else if (function.str[i] != ' ') {
+                str_add_char(&word, function.str[i]);
+                in_word = true;
+            }
+            else assert(false);
+        }
+        i++;
+    }
+    return j;
+}
+
 int main(void)
 {
     InitWindow(screen_width, screen_height, "Grapher");
@@ -127,12 +258,16 @@ int main(void)
     double r = eval_ast(&ast, 5);
     printf("[r=%lf]\n", r);
 
+    Token tokens[TOKENS_COUNT];
+    String func_code = {"(+ x 5)", 7};
+    int token_count = tokenize(tokens, func_code);
+    printf("[+] Number of Tokens: %d\n", token_count);
     plot_points(points, step, scale);
     // for (int i = 0; i < SAMPLE_SIZE; i++) {
     //     printf("%f %f\n", points[i].x, points[i].y);
     // }
 
-    while(!WindowShouldClose()) {
+    while(false & !WindowShouldClose()) {
         if (IsKeyDown(KEY_Q)) break;
         BeginDrawing();
         ClearBackground(BLACK);
