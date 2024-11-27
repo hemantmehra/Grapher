@@ -176,12 +176,21 @@ bool is_number(String str)
     return true;
 }
 
+double parse_number(String str)
+{
+    double num = 0;
+    for (int i=0; i < str.length; i++) {
+        num += pow(10, i) * (str.str[i] - '0');
+    }
+    return num;
+}
+
 Token get_token(String word)
 {
     Token t;
     if(is_number(word)) {
         t.kind = T_Number;
-        t.main.number = 0;
+        t.main.number = parse_number(word);
     }
     else {
         Operator op = get_operator(word);
