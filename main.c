@@ -138,6 +138,7 @@ void str_add_char(String *str, char ch)
 {
     int l = str->length;
     str->str[l] = ch;
+    str->length++;
 }
 
 bool str_eq(String str1, char *str2)
@@ -168,7 +169,9 @@ bool is_number(String str)
 {
     int i = 0;
     while (i < str.length) {
-        if (!(str.str[i++] > '0' && str.str[i++] < '9')) return false;
+        bool digit_check = str.str[i] >= '0' && str.str[i] <= '9';
+        if (!digit_check) return false;
+        i++;
     }
     return true;
 }
@@ -176,16 +179,20 @@ bool is_number(String str)
 Token get_token(String word)
 {
     Token t;
-    t.kind = T_Number;
     if(is_number(word)) {
+        t.kind = T_Number;
         t.main.number = 0;
     }
     else {
         Operator op = get_operator(word);
-        if (op == INVALID)
+        if (op == INVALID) {
+            t.kind = T_Symbol;
             t.main.symbol = word.str[0];
-        else
+        }
+        else {
+            t.kind = T_Operator;
             t.main.operator = op;
+        }
     }
     return t;
 }
@@ -232,6 +239,7 @@ int tokenize(Token *tokens, String function)
         }
         i++;
     }
+
     return j;
 }
 
@@ -262,6 +270,28 @@ int main(void)
     String func_code = {"(+ x 5)", 7};
     int token_count = tokenize(tokens, func_code);
     printf("[+] Number of Tokens: %d\n", token_count);
+
+    for (int i=0; i < token_count; i++) {
+        switch(tokens[i].kind) {
+            case T_Open:
+                printf("OPEN\n");
+                break;
+            case T_Close:
+                printf("CLOSE\n");
+                break;
+            case T_Symbol:
+                printf("[SYM] %c\n", tokens[i].main.symbol);
+                break;
+            case T_Number:
+                printf("[NUM] %lf\n", tokens[i].main.number);
+                break;
+            case T_Operator:
+                printf("[OP]\n");
+                break;
+            default: assert(false);
+        }
+    }
+
     plot_points(points, step, scale);
     // for (int i = 0; i < SAMPLE_SIZE; i++) {
     //     printf("%f %f\n", points[i].x, points[i].y);
