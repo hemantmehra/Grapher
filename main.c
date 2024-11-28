@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <string.h>
+#include <stdlib.h>
 #include <raylib.h>
 
 int screen_width = 1600;
@@ -77,14 +78,16 @@ double func1(double x)
     return  x * cos(x) * sin(x);
 }
 
-void plot_points(Vector2 *points, double step, double scale)
+double eval_ast(Ast *ast, double x);
+
+void plot_points(Ast* ast, Vector2 *points, double step, double scale)
 {
     int i = 0;
     double x = - step * SAMPLE_SIZE/2;
     double y;
     while (i < SAMPLE_SIZE) {
         // printf("%f\n", x);
-        y = func1(x);
+        y = eval_ast(ast, x);
         int yt = translate_y(y, scale);
         int xt = translate_x(x, scale);
         Vector2 p = {xt, yt};
@@ -99,10 +102,12 @@ double eval_ast(Ast *ast, double x)
     switch (ast->kind)
     {
     case Symbol:
+        // printf("eval_ast: Symbol x %lf \n", x);
         return x;
     
     case Binary:
         {
+            // printf("eval_ast: Binary\n");
             switch(ast->main.binary.op) {
                 case PLUS:
                 {
@@ -111,7 +116,27 @@ double eval_ast(Ast *ast, double x)
                     return l + r;
                 }
 
+                case MUL:
+                {
+                    double l = eval_ast(ast->main.binary.left, x);
+                    double r = eval_ast(ast->main.binary.right, x);
+                    return l * r;
+                }
+
+                case COS:
+                {
+                    double l = eval_ast(ast->main.binary.left, x);
+                    return cos(l);
+                }
+
+                case SIN:
+                {
+                    double l = eval_ast(ast->main.binary.left, x);
+                    return sin(l);
+                }
+
                 default:
+                    printf("[ASSERT] %d\n", ast->main.binary.op);
                     assert(false);
                     break;
             }
@@ -119,6 +144,7 @@ double eval_ast(Ast *ast, double x)
         }
     
     case Number:
+        // printf("eval_ast: Number %lf \n", ast->main.number);
         return ast->main.number;
 
     default:
@@ -240,6 +266,14 @@ int tokenize(Token *tokens, String function)
                     in_word = false;
                 }
             }
+            else if (!in_word && function.str[i] == ' ') {
+                if (word.length != 0) {
+                    Token t = get_token(word);
+                    word.length = 0;
+                    tokens[j++] = t;
+                    in_word = false;
+                }
+            }
             else if (function.str[i] != ' ') {
                 str_add_char(&word, function.str[i]);
                 in_word = true;
@@ -252,34 +286,68 @@ int tokenize(Token *tokens, String function)
     return j;
 }
 
-int main(void)
+struct _arena {
+    char *ptr;
+    int pos;
+};
+
+typedef struct _arena Arena;
+
+char* arena_alloc(Arena *a, int size)
 {
-    InitWindow(screen_width, screen_height, "Grapher");
-    double scale = 50;
-    double step = 0.01;
-    Vector2 points[SAMPLE_SIZE];
+    int p = a->pos;
+    a->pos += size;
+    return a->ptr + p;
+}
 
-    Ast ast_x;
-    ast_x.kind = Symbol;
-    ast_x.main.symbol = 'x';
+struct _ast_idx_pair {
+    Ast *ast;
+    int idx;
+};
 
-    Ast ast_4;
-    ast_4.kind = Number;
-    ast_4.main.number = 4;
+typedef struct _ast_idx_pair Ast_idx_pair;
 
-    Ast ast;
-    ast.kind = Binary;
-    ast.main.binary.left = &ast_x;
-    ast.main.binary.right = &ast_4;
+Ast_idx_pair parse_ast(Arena *arena, Token *tokens, int idx)
+{
+    if(tokens[idx].kind == T_Open) {
+        printf("parse open\n");
+        Ast * ast = (Ast*) arena_alloc(arena, sizeof(Ast));
+        ast->kind = Binary;
+        ast->main.binary.op = tokens[idx+1].main.operator;
+        Ast_idx_pair p1 = parse_ast(arena, tokens, idx+2);
+        ast->main.binary.left = p1.ast;
 
-    double r = eval_ast(&ast, 5);
-    printf("[r=%lf]\n", r);
+        if (tokens[p1.idx].kind == T_Close) {
+            return CLITERAL(Ast_idx_pair) {ast, p1.idx+1};
+        }
 
-    Token tokens[TOKENS_COUNT];
-    String func_code = {"(+ x 5)", 7};
-    int token_count = tokenize(tokens, func_code);
-    printf("[+] Number of Tokens: %d\n", token_count);
+        Ast_idx_pair p2 = parse_ast(arena, tokens, p1.idx);
+        ast->main.binary.right = p2.ast;
 
+        return CLITERAL(Ast_idx_pair) {ast, p2.idx+1};
+    }
+
+    if (tokens[idx].kind == T_Number) {
+        printf("parse number\n");
+        Ast * ast = (Ast*) arena_alloc(arena, sizeof(Ast));
+        ast->kind = Number;
+        ast->main.number = tokens[idx].main.number;
+        return CLITERAL(Ast_idx_pair) {ast, idx+1};
+    }
+
+    if (tokens[idx].kind == T_Symbol) {
+        printf("parse symbol\n");
+        Ast * ast = (Ast*) arena_alloc(arena, sizeof(Ast));
+        ast->kind = Symbol;
+        ast->main.symbol = tokens[idx].main.symbol;
+        return CLITERAL(Ast_idx_pair) {ast, idx+1};
+    }
+
+    assert(false);
+}
+
+void print_tokens(Token *tokens, int token_count)
+{
     for (int i=0; i < token_count; i++) {
         switch(tokens[i].kind) {
             case T_Open:
@@ -300,13 +368,34 @@ int main(void)
             default: assert(false);
         }
     }
+}
 
-    plot_points(points, step, scale);
+int main(void)
+{
+    InitWindow(screen_width, screen_height, "Grapher");
+    double scale = 50;
+    double step = 0.01;
+    Vector2 points[SAMPLE_SIZE];
+    Token tokens[TOKENS_COUNT];
+
+    char *f = "(* x (* (cos x) (sin x)))";
+    String func_code = {f, strlen(f)};
+    int token_count = tokenize(tokens, func_code);
+    printf("[+] Number of Tokens: %d\n", token_count);
+    print_tokens(tokens, token_count);
+
+    Arena arena = {0};
+    arena.ptr = (char *) malloc(2048);
+    Ast_idx_pair ast_idx_pair = parse_ast(&arena, tokens, 0);
+    double retval = eval_ast(ast_idx_pair.ast, 2);
+    printf("[r=%lf]\n", retval);
+
+    plot_points(ast_idx_pair.ast, points, step, scale);
     // for (int i = 0; i < SAMPLE_SIZE; i++) {
     //     printf("%f %f\n", points[i].x, points[i].y);
     // }
 
-    while(false & !WindowShouldClose()) {
+    while(!WindowShouldClose()) {
         if (IsKeyDown(KEY_Q)) break;
         BeginDrawing();
         ClearBackground(BLACK);
@@ -336,5 +425,6 @@ int main(void)
         EndDrawing();
     }
 
+    free(arena.ptr);
     CloseWindow();
 }
