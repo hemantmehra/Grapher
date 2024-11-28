@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <string.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <raylib.h>
 
 int screen_width = 1600;
@@ -255,10 +256,10 @@ int tokenize(Token *tokens, String function)
             in_word = false;
         }
         else {
-            if (in_word && function.str[i] != ' ') {
+            if (in_word && !isspace(function.str[i])) {
                 str_add_char(&word, function.str[i]);
             }
-            else if (in_word && function.str[i] == ' ') {
+            else if (in_word && isspace(function.str[i])) {
                 if (word.length != 0) {
                     Token t = get_token(word);
                     word.length = 0;
@@ -266,7 +267,7 @@ int tokenize(Token *tokens, String function)
                     in_word = false;
                 }
             }
-            else if (!in_word && function.str[i] == ' ') {
+            else if (!in_word && isspace(function.str[i])) {
                 if (word.length != 0) {
                     Token t = get_token(word);
                     word.length = 0;
@@ -274,7 +275,7 @@ int tokenize(Token *tokens, String function)
                     in_word = false;
                 }
             }
-            else if (function.str[i] != ' ') {
+            else if (!isspace(function.str[i])) {
                 str_add_char(&word, function.str[i]);
                 in_word = true;
             }
@@ -370,15 +371,31 @@ void print_tokens(Token *tokens, int token_count)
     }
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
+    if (argc < 2) {
+        printf("Usage: .\\main <input_file>\n");
+        exit(1);
+    }
+
+    FILE *fn = fopen(argv[1], "r");
+    
+    if (fn == NULL) {
+        printf("No such file: %s\n", argv[1]);
+        exit(1);
+    }
     InitWindow(screen_width, screen_height, "Grapher");
+
+    char *input_buffer = (char *) malloc(2048);
+    fread(input_buffer, 2048, 1, fn);
+    printf("Formula: %s\n", input_buffer);
+
     double scale = 50;
     double step = 0.01;
     Vector2 points[SAMPLE_SIZE];
     Token tokens[TOKENS_COUNT];
 
-    char *f = "(* x (* (cos x) (sin x)))";
+    char *f = input_buffer;
     String func_code = {f, strlen(f)};
     int token_count = tokenize(tokens, func_code);
     printf("[+] Number of Tokens: %d\n", token_count);
@@ -387,9 +404,6 @@ int main(void)
     Arena arena = {0};
     arena.ptr = (char *) malloc(2048);
     Ast_idx_pair ast_idx_pair = parse_ast(&arena, tokens, 0);
-    double retval = eval_ast(ast_idx_pair.ast, 2);
-    printf("[r=%lf]\n", retval);
-
     plot_points(ast_idx_pair.ast, points, step, scale);
     // for (int i = 0; i < SAMPLE_SIZE; i++) {
     //     printf("%f %f\n", points[i].x, points[i].y);
